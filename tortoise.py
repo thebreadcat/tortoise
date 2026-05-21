@@ -14,12 +14,13 @@ import os, sys, re, json, shutil, difflib, argparse, urllib.request, urllib.erro
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 
 T           = ".tortoise"
 BRAIN       = f"{T}/BRAIN.md"
+CONSTITUTION = f"{T}/CONSTITUTION.md"
 TODO        = f"{T}/TODO.md"
 PROGRESS    = f"{T}/PROGRESS.md"
 DECISIONS   = f"{T}/DECISIONS.md"
@@ -197,6 +198,22 @@ def append_brain(update):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     write(BRAIN, read(BRAIN) + f"\n\n<!-- {ts} -->\n{update}")
 
+def trim_brain_for_prompt(brain: str, max_updates: int = 3) -> str:
+    """Keep stable header sections plus only the last N update blocks."""
+    if not brain.strip():
+        return brain
+    markers = []
+    for i, line in enumerate(brain.split("\n")):
+        if re.match(r"^##\s+Update\s*\(", line) or re.match(r"^<!--\s+\d{4}-\d{2}-\d{2}", line):
+            markers.append(i)
+    if len(markers) <= max_updates:
+        return brain
+    cut = markers[-max_updates]
+    header = "\n".join(brain.split("\n")[: markers[0]]).rstrip()
+    tail = "\n".join(brain.split("\n")[cut:]).lstrip()
+    note = f"\n\n[Earlier updates omitted — showing last {max_updates} only]\n"
+    return f"{header}{note}\n{tail}"
+
 def log_decision(task, text):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
     write(DECISIONS, read(DECISIONS, "# Decisions\n") + f"\n## {ts} — {task}\n{text}\n")
@@ -355,6 +372,100 @@ def validate_html_content(content: str, task: str = "") -> list:
 
     return issues
 
+def _strip_js_noise(js: str) -> str:
+    """Rough strip of strings/comments for brace counting."""
+    s = re.sub(r"//[^\n]*", "", js)
+    s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
+    s = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', '""', s)
+    s = re.sub(r"'[^'\\]*(?:\\.[^'\\]*)*'", "''", s)
+    return s
+
+def validate_js_content(html_content: str, task: str = "") -> list:
+    """Lightweight JS wiring checks inside <script> blocks. Returns (level, message)."""
+    issues = []
+    scripts = re.findall(r"<script[^>]*>(.*?)</script>", html_content, re.I | re.S)
+    if not scripts:
+        return issues
+
+    full_js = "\n".join(scripts)
+    cleaned = _strip_js_noise(full_js)
+    for open_c, close_c, label in (("{", "}", "braces"), ("[", "]", "brackets"), ("(", ")", "parens")):
+        o, c = cleaned.count(open_c), cleaned.count(close_c)
+        if o != c:
+            issues.append(("severe", f"Mismatched {label} in <script> ({o} open, {c} close)"))
+
+    html_ids = set(re.findall(r'\bid=["\']([^"\']+)["\']', html_content, re.I))
+    for m in re.finditer(r'getElementById\(\s*["\']([^"\']+)["\']', full_js):
+        if m.group(1) not in html_ids:
+            issues.append(("severe", f"getElementById('{m.group(1)}') — no matching id in HTML"))
+    for m in re.finditer(r'querySelector\(\s*["\']#([^"\']+)["\']', full_js):
+        if m.group(1) not in html_ids:
+            issues.append(("severe", f"querySelector('#{m.group(1)}') — no matching id in HTML"))
+    for m in re.finditer(r'addEventListener\(\s*["\'](\w+)["\']', full_js):
+        pass  # event type only — skip
+
+    gets = set(re.findall(r'localStorage\.getItem\(\s*["\']([^"\']+)["\']', full_js))
+    sets = set(re.findall(r'localStorage\.setItem\(\s*["\']([^"\']+)["\']', full_js))
+    for key in gets:
+        if key not in sets:
+            issues.append(("severe", f"localStorage.getItem('{key}') with no setItem in this file"))
+
+    if _task_requires_js(task):
+        for pat in (r"addEventListener", r"\.onclick\s*=", r"onsubmit"):
+            if re.search(pat, full_js, re.I):
+                break
+        else:
+            if re.search(r"<button|<input[^>]+type=[\"']submit", html_content, re.I):
+                issues.append(("warn", "Buttons/forms present but no event handlers in <script>"))
+
+    return issues
+
+GOLDEN_EXAMPLE_HTML = """\
+EXAMPLE RESPONSE (format only — do not copy this app):
+
+PLAN:
+Add a minimal counter with localStorage persistence.
+
+FILE: index.html
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Counter</title></head>
+<body>
+<h1>Counter</h1>
+<button id="btn" type="button">Add</button>
+<p id="count">0</p>
+<script>
+const KEY = "count";
+let n = parseInt(localStorage.getItem(KEY) || "0", 10);
+document.getElementById("btn").addEventListener("click", () => {
+  n++; localStorage.setItem(KEY, String(n));
+  document.getElementById("count").textContent = String(n);
+});
+document.getElementById("count").textContent = String(n);
+</script>
+</body>
+</html>
+ENDFILE
+
+BRAIN_UPDATE:
+Added counter UI and localStorage persistence.
+
+TODO_DONE:
+[task copied from CURRENT TASK]
+
+TODO_ADD:
+NONE
+
+DECISION:
+Single-file app with ids wired to script handlers.
+"""
+
+def _task_is_html(task: str, rel_files: list) -> bool:
+    tlow = task.lower()
+    if "index.html" in tlow or ".html" in tlow:
+        return True
+    return any(f.endswith(".html") for f in rel_files)
+
 # ── Prompt builder ─────────────────────────────────────────────────────────────
 
 def build_prompt(task, brain, all_files, rel_files, cfg):
@@ -372,10 +483,19 @@ def build_prompt(task, brain, all_files, rel_files, cfg):
     if not file_blocks.strip():
         file_blocks = "[No existing files loaded — likely creating new files]"
 
+    constitution = read(CONSTITUTION).strip()
+    const_block = ""
+    if constitution:
+        const_block = f"\nCONSTITUTION (follow on every chunk — non-negotiable):\n{constitution}\n"
+
+    example_block = ""
+    if _task_is_html(task, rel_files):
+        example_block = f"\n{GOLDEN_EXAMPLE_HTML}\n"
+
     return f"""\
 PROJECT BRAIN:
 {brain}
-
+{const_block}
 CURRENT TASK:
 {task}
 
@@ -391,7 +511,9 @@ CRITICAL RULES:
 - If index.html already exists, output the COMPLETE updated file (copy unchanged parts exactly).
 - If the file would be very long, focus ONLY on what this task changes — but still close all tags.
 - Include a <script> block with working JavaScript when the task involves interactivity or data.
-
+- Every getElementById / #selector in JS must match an id that exists in the HTML.
+- localStorage: every getItem key must have a setItem somewhere in the same file.
+{example_block}
 RESPOND IN EXACTLY THIS FORMAT — do not skip any section:
 
 PLAN:
@@ -600,7 +722,7 @@ def cmd_run(args):
     if rel_f: info(f"Relevant files: {', '.join(rel_f)}")
     else:     info("No existing files matched — likely new files")
 
-    brain  = read(BRAIN)
+    brain  = trim_brain_for_prompt(read(BRAIN))
     prompt = build_prompt(task, brain, all_f, rel_f, cfg)
 
     write_current(task, "CALLING_MODEL", rel_f)
@@ -612,6 +734,36 @@ def cmd_run(args):
         err(str(e)); return
 
     parsed = parse(response)
+    if not parsed.files:
+        warn("No files parsed — retrying with stricter format prompt")
+        retry = f"""Your last response was missing parseable FILE blocks. Reply ONLY in this exact format.
+
+CURRENT TASK: {task}
+
+PLAN:
+[2-3 lines]
+
+FILE: index.html
+[complete file — all tags closed, working script if needed]
+ENDFILE
+
+BRAIN_UPDATE:
+[one sentence]
+
+TODO_DONE:
+{task}
+
+TODO_ADD:
+NONE
+
+DECISION:
+[one sentence]
+"""
+        try:
+            response = call_model(retry, cfg)
+            parsed = parse(response)
+        except RuntimeError as e:
+            err(str(e)); return
 
     # Show plan
     if parsed.plan:
@@ -639,8 +791,11 @@ def cmd_run(args):
         for fp, content in parsed.files.items():
             if fp.endswith(".html"):
                 for level, msg in validate_html_content(content, task):
-                    tag = "✗" if level == "severe" else "!"
                     (err if level == "severe" else warn)(f"HTML check ({fp}): {msg}")
+                    if level == "severe":
+                        validation_errors.append(f"{fp}: {msg}")
+                for level, msg in validate_js_content(content, task):
+                    (err if level == "severe" else warn)(f"JS check ({fp}): {msg}")
                     if level == "severe":
                         validation_errors.append(f"{fp}: {msg}")
 
