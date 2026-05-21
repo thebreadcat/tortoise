@@ -376,6 +376,7 @@ def _strip_js_noise(js: str) -> str:
     """Rough strip of strings/comments for brace counting."""
     s = re.sub(r"//[^\n]*", "", js)
     s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
+    s = re.sub(r"`[^`\\]*(?:\\.[^`\\]*)*`", "``", s)
     s = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', '""', s)
     s = re.sub(r"'[^'\\]*(?:\\.[^'\\]*)*'", "''", s)
     return s
