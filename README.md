@@ -65,12 +65,20 @@ The repo ships `config.example.json` only (`api_key: null`). Real keys stay in e
 
 ## Used by
 
-[Workshop](../workforce-tortise) — natural-language app builder that drives Tortoise in a loop.
+[Workshop](https://github.com/thebreadcat/workshop) — natural-language app builder that drives Tortoise in a loop.
 
-With both repos cloned side by side, Workshop finds `../tortoise/tortoise.py` automatically.
+Workshop does not bundle Tortoise. Install side by side or as a submodule:
 
 ```bash
-export TORTOISE_PATH=/path/to/tortoise/tortoise.py   # optional override
+git clone https://github.com/thebreadcat/workshop.git
+cd workshop
+git submodule add https://github.com/thebreadcat/tortoise.git vendor/tortoise
+```
+
+Workshop finds `vendor/tortoise/tortoise.py` or `../tortoise/tortoise.py`. Override with:
+
+```bash
+export TORTOISE_PATH=/path/to/tortoise/tortoise.py
 ```
 
 ## Publishing to GitHub
