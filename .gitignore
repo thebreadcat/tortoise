@@ -1,0 +1,28 @@
+# Dev sync artifact (optional; tortoise.py is the published entry after sync)
+tortoise_impl.py
+
+# Secrets and local config (copy config.example.json → .tortoise/config.json)
+.tortoise/config.json
+**/config.local.json
+.env
+.env.*
+*.pem
+*.key
+
+# Runtime / scratch
+__pycache__/
+*.py[cod]
+.Python
+.venv/
+venv/
+.DS_Store
+
+# Tortoise state inside demo/sample projects
+example-project/.tortoise/backups/
+example-project/.tortoise/CURRENT.md
+example-project/.tortoise/config.json
+
+# Editor
+.idea/
+.vscode/
+*.swp
