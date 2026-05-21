@@ -1,5 +1,7 @@
-# Dev sync artifact (optional; tortoise.py is the published entry after sync)
+# Local dev utilities (not published)
+scripts/
 tortoise_impl.py
+sync_from_workshop.py
 
 # Secrets and local config (copy config.example.json → .tortoise/config.json)
 .tortoise/config.json

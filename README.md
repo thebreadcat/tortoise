@@ -12,14 +12,6 @@ Tortoise breaks work into atomic steps with a persistent **BRAIN**, **TODO** que
 git clone https://github.com/thebreadcat/tortoise.git
 cd tortoise
 
-# If tortoise.py is missing (stub only), sync from Workshop repo:
-python3 sync_from_workshop.py
-# Or: python3 scripts/bootstrap_copy.py
-
-# Before publishing to GitHub — scan for secrets:
-chmod +x scripts/check-secrets.sh
-./scripts/check-secrets.sh
-
 # In your app or repo:
 cd /path/to/your-project
 python3 /path/to/tortoise/tortoise.py init
@@ -67,15 +59,7 @@ tortoise config --api-key sk-...
 ## Security
 
 - **Never commit** `.tortoise/config.json` — it may contain `api_key`.
-- Run `./scripts/check-secrets.sh` before pushing this repo or your app.
 - See [SECURITY.md](SECURITY.md) for details.
-
-## Publishing to GitHub
-
-1. Clone **both** repos side by side (`tortoise/` and `workforce-tortise/`).
-2. Run `python3 sync_from_workshop.py` — writes the full `tortoise.py` (replaces the dev launcher).
-3. Run `./scripts/check-secrets.sh` — must pass before you push.
-4. `git add` and push. Never commit `.tortoise/config.json` from your apps.
 
 The repo ships `config.example.json` only (`api_key: null`). Real keys stay in each project's `.tortoise/config.json` (gitignored by `tortoise init`).
 
@@ -91,23 +75,8 @@ export TORTOISE_PATH=/path/to/tortoise/tortoise.py   # optional override
 
 ## Publishing to GitHub
 
-If you created the repo on GitHub with a **GPL-3.0** license template, the remote has one commit and your local clone has another (MIT). `git push` fails with *unrelated histories* or *non-fast-forward* — that is a history mismatch, not a missing license file.
-
-From this repo (after `python3 sync_from_workshop.py` and `./scripts/check-secrets.sh`):
-
-```bash
-chmod +x scripts/publish-to-github.sh
-./scripts/publish-to-github.sh
-```
-
-That merges histories and keeps **MIT** `LICENSE`. If you only want your local tree on GitHub and do not need the template commit:
-
-```bash
-git push -u origin main --force
-```
-
-Then set **Settings → General → License → MIT** on GitHub if the badge still shows GPL.
+If you created the repo on GitHub with a **GPL-3.0** license template, the remote has one commit and your local clone has another. `git push` fails with *unrelated histories* or *non-fast-forward* — merge or replace the remote history, then push. Set **Settings → General → License → Other** if the badge still shows GPL.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[Tortoise License](LICENSE) — free to use, modify, and share, but you may not sell the software or offer paid support for it. Not OSI-approved open source. You may still use Tortoise in commercial projects (e.g. apps you build with it).

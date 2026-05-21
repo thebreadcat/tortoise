@@ -26,12 +26,6 @@ cp config.example.json .tortoise/config.json
 
 ## Before pushing to GitHub
 
-From the Tortoise repo root:
-
-```bash
-./scripts/check-secrets.sh
-```
-
 From a project that uses Tortoise:
 
 ```bash
