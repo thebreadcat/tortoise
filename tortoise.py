@@ -443,7 +443,7 @@ FILE: index.html
 <p id="count">0</p>
 <script>
 const APP = "my-app";
-async function getData(k){const r=await fetch(`/api/data/${APP}/${k}`);return r.ok?r.json():null;}
+async function getData(k){const r=await fetch(`/api/data/${APP}/${k}`);if(!r.ok)return null;return (await r.json()).value;}
 async function putData(k,v){await fetch(`/api/data/${APP}/${k}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(v)});}
 let n = 0;
 getData("count").then(v => { n = v ?? 0; document.getElementById("count").textContent = String(n); });
