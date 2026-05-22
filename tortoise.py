@@ -399,7 +399,8 @@ def validate_js_content(html_content: str, task: str = "") -> list:
     for m in re.finditer(r'getElementById\(\s*["\']([^"\']+)["\']', full_js):
         if m.group(1) not in html_ids:
             issues.append(("severe", f"getElementById('{m.group(1)}') — no matching id in HTML"))
-    for m in re.finditer(r'querySelector\(\s*["\']#([^"\']+)["\']', full_js):
+    # Only simple #id selectors — not compound (#foo .bar)
+    for m in re.finditer(r'querySelector(?:All)?\(\s*["\']#([\w-]+)\s*["\']', full_js):
         if m.group(1) not in html_ids:
             issues.append(("severe", f"querySelector('#{m.group(1)}') — no matching id in HTML"))
     for m in re.finditer(r'addEventListener\(\s*["\'](\w+)["\']', full_js):
@@ -410,6 +411,11 @@ def validate_js_content(html_content: str, task: str = "") -> list:
     for key in gets:
         if key not in sets:
             issues.append(("severe", f"localStorage.getItem('{key}') with no setItem in this file"))
+
+    constitution = read(CONSTITUTION).lower()
+    uses_data_api = "data api" in constitution and "not localstorage" in constitution
+    if uses_data_api and re.search(r"localStorage\.setItem", full_js, re.I):
+        issues.append(("warn", "Constitution requires Workshop data API — avoid localStorage.setItem"))
 
     if _task_requires_js(task):
         for pat in (r"addEventListener", r"\.onclick\s*=", r"onsubmit"):
@@ -425,7 +431,7 @@ GOLDEN_EXAMPLE_HTML = """\
 EXAMPLE RESPONSE (format only — do not copy this app):
 
 PLAN:
-Add a minimal counter with localStorage persistence.
+Add a minimal counter with Workshop data API persistence.
 
 FILE: index.html
 <!DOCTYPE html>
@@ -436,20 +442,22 @@ FILE: index.html
 <button id="btn" type="button">Add</button>
 <p id="count">0</p>
 <script>
-const KEY = "count";
-let n = parseInt(localStorage.getItem(KEY) || "0", 10);
-document.getElementById("btn").addEventListener("click", () => {
-  n++; localStorage.setItem(KEY, String(n));
+const APP = "my-app";
+async function getData(k){const r=await fetch(`/api/data/${APP}/${k}`);return r.ok?r.json():null;}
+async function putData(k,v){await fetch(`/api/data/${APP}/${k}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(v)});}
+let n = 0;
+getData("count").then(v => { n = v ?? 0; document.getElementById("count").textContent = String(n); });
+document.getElementById("btn").addEventListener("click", async () => {
+  n++; await putData("count", n);
   document.getElementById("count").textContent = String(n);
 });
-document.getElementById("count").textContent = String(n);
 </script>
 </body>
 </html>
 ENDFILE
 
 BRAIN_UPDATE:
-Added counter UI and localStorage persistence.
+Added counter UI and data API persistence.
 
 TODO_DONE:
 [task copied from CURRENT TASK]
